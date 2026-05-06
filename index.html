@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TierMathe 🐾</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBU1IdI0ryEF1rTJwhIHip9or1pEGxG77c",
+  authDomain: "tiermathe-e0735.firebaseapp.com",
+  projectId: "tiermathe-e0735",
+  storageBucket: "tiermathe-e0735.firebasestorage.app",
+  messagingSenderId: "274240602958",
+  appId: "1:274240602958:web:4c2c211518c90bedb2141f"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800;900&display=swap');
 :root {
@@ -209,6 +223,17 @@ input[type=text]:focus{border-color:var(--orange);background:#fff}
 .t-stat-num{font-family:'Fredoka One',cursive;font-size:2rem;color:var(--orange)}
 .t-stat-lbl{font-size:.8rem;color:var(--muted);font-weight:700}
 
+/* ── PIN ── */
+.pin-dots{display:flex;gap:12px;justify-content:center;margin:16px 0}
+.pin-dot{width:18px;height:18px;border-radius:50%;border:2.5px solid #ccc;background:#fff;transition:all .2s}
+.pin-dot.filled{background:var(--orange);border-color:var(--orange)}
+.pin-dot.error{background:var(--red);border-color:var(--red)}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:220px;margin:0 auto}
+.pin-btn{background:#f1f1f1;border:none;border-radius:14px;padding:16px;font-family:'Fredoka One',cursive;font-size:1.5rem;color:var(--text);cursor:pointer;transition:all .15s}
+.pin-btn:hover{background:#ffe0b2;transform:scale(1.05)}
+.pin-btn:active{transform:scale(.97)}
+.pin-btn.del{background:#ffe0e0;color:var(--red)}
+
 #confetti{position:fixed;inset:0;pointer-events:none;z-index:999}
 .mt{margin-top:12px}
 hr.dv{border:none;border-top:2px solid #f0f0f0;margin:18px 0}
@@ -303,6 +328,36 @@ hr.dv{border:none;border-top:2px solid #f0f0f0;margin:18px 0}
     <p style="margin-bottom:18px">Alles was du dir erkauft hast! ⭐ <span id="trophy-stars" style="font-weight:900;color:var(--orange)">0</span> Sterne übrig</p>
     <div id="trophy-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
     <p id="trophy-empty" style="text-align:center;padding:30px 0;display:none">Noch nichts gekauft – geh in den Shop! 🛒</p>
+  </div>
+</div>
+
+<!-- PIN SCREEN -->
+<div class="screen" id="s-pin">
+  <div class="card">
+    <div style="font-size:3rem;margin-bottom:8px" id="pin-avatar"></div>
+    <h2 id="pin-title">Deine PIN</h2>
+    <p id="pin-sub" style="margin-bottom:16px">Gib deine 4-stellige PIN ein</p>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="pin-err" id="pin-err" style="color:var(--red);font-weight:800;min-height:24px;margin-bottom:8px;font-size:.95rem"></div>
+    <div class="pin-pad">
+      <button class="pin-btn" onclick="App.pinKey('1')">1</button>
+      <button class="pin-btn" onclick="App.pinKey('2')">2</button>
+      <button class="pin-btn" onclick="App.pinKey('3')">3</button>
+      <button class="pin-btn" onclick="App.pinKey('4')">4</button>
+      <button class="pin-btn" onclick="App.pinKey('5')">5</button>
+      <button class="pin-btn" onclick="App.pinKey('6')">6</button>
+      <button class="pin-btn" onclick="App.pinKey('7')">7</button>
+      <button class="pin-btn" onclick="App.pinKey('8')">8</button>
+      <button class="pin-btn" onclick="App.pinKey('9')">9</button>
+      <button class="pin-btn del" onclick="App.pinDel()">⌫</button>
+      <button class="pin-btn" onclick="App.pinKey('0')">0</button>
+      <button class="pin-btn del" onclick="App.pinCancel()">✕</button>
+    </div>
   </div>
 </div>
 
@@ -570,23 +625,60 @@ const SHOP_ITEMS = [
   {id:'mg8',  cat:'Magie', icon:'🧨', name:'Feuerwerk',      price:7},
   {id:'mg9',  cat:'Magie', icon:'🦋', name:'Schmetterling',  price:6},
 ];
-// ═══════════ STORAGE ═══════════
+// ═══════════ STORAGE (localStorage + Firebase sync) ═══════════
+// LocalStorage as cache, Firebase as source of truth
 const Store={
+  // ── LOCAL (cache) ──
   profiles(){ try{return JSON.parse(localStorage.getItem('tm_profiles')||'[]')}catch(e){return[]} },
-  saveProfiles(ps){ localStorage.setItem('tm_profiles',JSON.stringify(ps)); },
+  saveProfiles(ps){ localStorage.setItem('tm_profiles',JSON.stringify(ps)); Cloud.saveProfiles(ps); },
   progress(pid){ try{return JSON.parse(localStorage.getItem('tm_prog_'+pid)||'{}')}catch(e){return{}} },
-  saveProgress(pid,p){ localStorage.setItem('tm_prog_'+pid,JSON.stringify(p)); },
+  saveProgress(pid,p){ localStorage.setItem('tm_prog_'+pid,JSON.stringify(p)); Cloud.saveProgress(pid,p); },
   totalStars(prog){ return Object.values(prog).reduce((s,v)=>s+(v.stars||0),0); },
   owned(pid){ try{return JSON.parse(localStorage.getItem('tm_owned_'+pid)||'[]')}catch(e){return[]} },
-  saveOwned(pid,o){ localStorage.setItem('tm_owned_'+pid,JSON.stringify(o)); },
+  saveOwned(pid,o){ localStorage.setItem('tm_owned_'+pid,JSON.stringify(o)); Cloud.saveOwned(pid,o); },
   spentStars(pid){ try{return parseInt(localStorage.getItem('tm_spent_'+pid)||'0')}catch(e){return 0} },
-  addSpent(pid,n){ localStorage.setItem('tm_spent_'+pid, Store.spentStars(pid)+n); },
-  // Error tracking: {taskKey: {attempts, errors, lastError}}
+  addSpent(pid,n){ const v=Store.spentStars(pid)+n; localStorage.setItem('tm_spent_'+pid,v); Cloud.addSpent(pid,v); },
   stats(pid){ try{return JSON.parse(localStorage.getItem('tm_stats_'+pid)||'{}')}catch(e){return{}} },
-  saveStats(pid,st){ localStorage.setItem('tm_stats_'+pid,JSON.stringify(st)); },
-  // Teacher password
+  saveStats(pid,st){ localStorage.setItem('tm_stats_'+pid,JSON.stringify(st)); Cloud.saveStats(pid,st); },
   teacherPw(){ return localStorage.getItem('tm_teacher_pw')||'' },
-  saveTeacherPw(pw){ localStorage.setItem('tm_teacher_pw',pw); }
+  saveTeacherPw(pw){ localStorage.setItem('tm_teacher_pw',pw); Cloud.saveTeacherPw(pw); }
+};
+
+// ═══════════ CLOUD (Firebase Firestore) ═══════════
+const Cloud={
+  saveProfiles(ps){ db.collection('config').doc('profiles').set({list:ps}).catch(()=>{}); },
+  saveProgress(pid,p){ db.collection('progress').doc(pid).set(p).catch(()=>{}); },
+  saveOwned(pid,o){ db.collection('owned').doc(pid).set({items:o}).catch(()=>{}); },
+  addSpent(pid,v){ db.collection('spent').doc(pid).set({amount:v}).catch(()=>{}); },
+  saveStats(pid,st){ db.collection('stats').doc(pid).set(st).catch(()=>{}); },
+  saveTeacherPw(pw){ db.collection('config').doc('teacher').set({pw}).catch(()=>{}); },
+  savePinHash(pid,hash){ db.collection('pins').doc(pid).set({hash}).catch(()=>{}); },
+  async getPinHash(pid){ try{ const d=await db.collection('pins').doc(pid).get(); return d.exists?d.data().hash:null; }catch(e){return null;} },
+  async loadAll(){
+    try{
+      // Load profiles
+      const pd=await db.collection('config').doc('profiles').get();
+      if(pd.exists){ const ps=pd.data().list||[]; localStorage.setItem('tm_profiles',JSON.stringify(ps)); }
+      // Load teacher pw
+      const td=await db.collection('config').doc('teacher').get();
+      if(td.exists&&td.data().pw) localStorage.setItem('tm_teacher_pw',td.data().pw);
+      // Load all progress/stats/owned/spent
+      const profiles=Store.profiles();
+      await Promise.all(profiles.map(async p=>{
+        const [prog,ow,sp,st]=await Promise.all([
+          db.collection('progress').doc(p.id).get(),
+          db.collection('owned').doc(p.id).get(),
+          db.collection('spent').doc(p.id).get(),
+          db.collection('stats').doc(p.id).get(),
+        ]);
+        if(prog.exists) localStorage.setItem('tm_prog_'+p.id,JSON.stringify(prog.data()));
+        if(ow.exists) localStorage.setItem('tm_owned_'+p.id,JSON.stringify(ow.data().items||[]));
+        if(sp.exists) localStorage.setItem('tm_spent_'+p.id,String(sp.data().amount||0));
+        if(st.exists) localStorage.setItem('tm_stats_'+p.id,JSON.stringify(st.data()));
+      }));
+      return true;
+    }catch(e){ console.warn('Cloud sync failed, using local data'); return false; }
+  }
 };
 
 // ═══════════ UTIL ═══════════
@@ -597,6 +689,7 @@ function $id(i){ return document.getElementById(i); }
 // ═══════════ APP ═══════════
 const App=(()=>{
   let profile=null,progress={},selAv=AVATARS[0];
+  let pinBuffer='', pinMode='', pinResolve=null;
   let sess={},examSess={},timerTick=null,locked=false,examLocked=false;
 
   function toggleSound(){ 
@@ -660,16 +753,118 @@ const App=(()=>{
     if(!cls){alert('Bitte eine Klasse auswählen!');return;}
     const ps=Store.profiles(), p={id:'p'+Date.now(),name,av:selAv,cls}; ps.push(p); Store.saveProfiles(ps); login(p);
   }
-  function login(p){
+  async function login(p){
     // Klasse fehlend → nachträglich eintragen
     if(!p.cls){
       const cls=promptClass(p.name);
-      if(!cls) return; // abgebrochen
+      if(!cls) return;
       p.cls=cls;
       const ps=Store.profiles().map(x=>x.id===p.id?p:x);
       Store.saveProfiles(ps);
     }
+    // PIN check
+    const storedHash=await Cloud.getPinHash(p.id);
+    if(!storedHash){
+      // Kein PIN gesetzt → neuen PIN anlegen
+      const pin=await showPinScreen(p,'set');
+      if(!pin) return;
+      const hash=simpleHash(pin);
+      await Cloud.savePinHash(p.id,hash);
+      localStorage.setItem('tm_pin_'+p.id,hash);
+    } else {
+      // PIN vorhanden → prüfen
+      const pin=await showPinScreen(p,'check');
+      if(!pin) return;
+      const hash=simpleHash(pin);
+      if(hash!==storedHash){
+        // Falsche PIN - showPinScreen handled the error display
+        return;
+      }
+    }
     profile=p; progress=Store.progress(p.id); showMap();
+  }
+
+  function simpleHash(pin){
+    // Simple hash - not cryptographic but good enough for kids game
+    let h=0;
+    for(let i=0;i<pin.length;i++) h=(Math.imul(31,h)+pin.charCodeAt(i))|0;
+    return h.toString(36);
+  }
+
+  function showPinScreen(p, mode){
+    return new Promise(resolve=>{
+      pinBuffer=''; pinMode=mode; pinResolve=resolve;
+      window._pinCheckId=p.id; $id('pin-avatar').textContent=p.av;
+      $id('pin-title').textContent=mode==='set'?'Neuen PIN wählen':'PIN eingeben';
+      $id('pin-sub').textContent=mode==='set'
+        ?p.name+', wähle eine 4-stellige Geheimzahl!'
+        :'Hallo '+p.name+'! Gib deinen PIN ein.';
+      $id('pin-err').textContent='';
+      updatePinDots('');
+      show('s-pin');
+    });
+  }
+
+  function pinKey(d){
+    if(pinBuffer.length>=4) return;
+    pinBuffer+=d;
+    updatePinDots(pinBuffer);
+    if(pinBuffer.length===4) setTimeout(handlePinComplete,120);
+  }
+
+  async function handlePinComplete(){
+    const entered=pinBuffer; pinBuffer='';
+    if(pinMode==='set'){
+      window._pinFirst=entered;
+      pinMode='confirm';
+      $id('pin-sub').textContent='Nochmal eingeben zum Bestätigen!';
+      $id('pin-err').textContent='';
+      updatePinDots('');
+    } else if(pinMode==='confirm'){
+      if(entered===window._pinFirst){
+        window._pinFirst=null; pinMode='';
+        if(pinResolve){ const r=pinResolve; pinResolve=null; r(entered); }
+      } else {
+        updatePinDots(entered,'error');
+        $id('pin-err').textContent='PINs stimmen nicht überein! Nochmal.';
+        setTimeout(()=>{ updatePinDots(''); $id('pin-err').textContent=''; pinBuffer=''; },1200);
+        setTimeout(()=>{ pinMode='set'; $id('pin-sub').textContent='Wähle eine 4-stellige Geheimzahl!'; },1200);
+      }
+    } else if(pinMode==='check'){
+      const localHash=localStorage.getItem('tm_pin_'+window._pinCheckId)||'';
+      const h=simpleHash(entered);
+      if(h===localHash){
+        if(pinResolve){ const r=pinResolve; pinResolve=null; r(entered); }
+      } else {
+        // Try cloud
+        const cloudHash=await Cloud.getPinHash(window._pinCheckId);
+        if(cloudHash&&h===cloudHash){
+          localStorage.setItem('tm_pin_'+window._pinCheckId,cloudHash);
+          if(pinResolve){ const r=pinResolve; pinResolve=null; r(entered); }
+        } else {
+          updatePinDots(entered,'error');
+          $id('pin-err').textContent='Falscher PIN! Versuch es nochmal.';
+          setTimeout(()=>{ updatePinDots(''); $id('pin-err').textContent=''; pinBuffer=''; },1200);
+        }
+      }
+    }
+  }
+
+  function updatePinDots(buf,state){
+    for(let i=0;i<4;i++){
+      const d=$id('pd'+i);
+      d.className='pin-dot'+(buf.length>i?' filled':'')+(state==='error'?' error':'');
+    }
+  }
+
+  function pinDel(){
+    if(pinBuffer.length>0){ pinBuffer=pinBuffer.slice(0,-1); updatePinDots(pinBuffer); }
+  }
+
+  function pinCancel(){
+    pinBuffer=''; pinResolve=null; pinMode='';
+    window._pinConfirmFirst=null; window._pinConfirmResolve=null;
+    showProfiles();
   }
 
   function promptClass(name){
@@ -1591,7 +1786,12 @@ const App=(()=>{
 
   function backToTeacher(){ show('s-teacher'); }
 
-  return {showProfiles,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,launchCatExam};
+  return {showProfiles,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,pinKey,pinDel,pinCancel};
+})();
+
+// Cloud sync on startup
+(async()=>{
+  try{ await Cloud.loadAll(); }catch(e){ console.warn('Cloud sync failed'); }
 })();
 </script>
 
