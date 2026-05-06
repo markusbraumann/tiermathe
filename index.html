@@ -179,6 +179,10 @@ input[type=text]:focus{border-color:var(--orange);background:#fff}
 .cbtns{display:flex;gap:12px;justify-content:center;margin-top:22px;flex-wrap:wrap}
 .rscore{font-family:'Fredoka One',cursive;font-size:3rem;color:var(--orange);margin:10px 0}
 
+/* ── CLASS SELECT ── */
+.cls-btn{background:#f7f7f7;border:2.5px solid #e0e0e0;border-radius:14px;padding:14px 8px;font-family:'Fredoka One',cursive;font-size:1.4rem;color:var(--text);cursor:pointer;transition:all .18s;text-align:center}
+.cls-btn:hover{border-color:var(--orange);background:#fff3e0;transform:scale(1.06)}
+
 /* ── SHOP & TROPHY ── */
 .shop-item{background:#f7f7f7;border-radius:16px;padding:14px 10px;text-align:center;border:3px solid transparent;transition:all .2s;position:relative}
 .shop-item.owned{background:linear-gradient(135deg,#e8f8f0,#c8f0dc);border-color:var(--green)}
@@ -257,12 +261,37 @@ hr.dv{border:none;border-top:2px solid #f0f0f0;margin:18px 0}
   </div>
 </div>
 
+<!-- CLASS SELECT -->
+<div class="screen" id="s-class">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h2 style="margin:0">📚 Welche Klasse bist du?</h2>
+      <button class="btn btn-gh btn-sm" onclick="App.showTeacherLogin('profiles')" style="font-size:.85rem">👩&#x200d;🏫 Lehrer</button>
+    </div>
+    <p style="margin-bottom:16px">Wähle zuerst deine Klasse!</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
+      <button class="cls-btn" onclick="App.selectClass('2a')">2a</button>
+      <button class="cls-btn" onclick="App.selectClass('2b')">2b</button>
+      <button class="cls-btn" onclick="App.selectClass('2c')">2c</button>
+      <button class="cls-btn" onclick="App.selectClass('2d')">2d</button>
+      <button class="cls-btn" onclick="App.selectClass('2e')">2e</button>
+      <button class="cls-btn" onclick="App.selectClass('2f')">2f</button>
+      <button class="cls-btn" onclick="App.selectClass('3a')">3a</button>
+      <button class="cls-btn" onclick="App.selectClass('3b')">3b</button>
+      <button class="cls-btn" onclick="App.selectClass('3c')">3c</button>
+      <button class="cls-btn" onclick="App.selectClass('3d')">3d</button>
+      <button class="cls-btn" onclick="App.selectClass('3e')">3e</button>
+      <button class="cls-btn" onclick="App.selectClass('3f')">3f</button>
+    </div>
+  </div>
+</div>
+
 <!-- PROFILES -->
 <div class="screen" id="s-prof">
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <h2 style="margin:0">👤 Wer bist du?</h2>
-      <button class="btn btn-gh btn-sm" onclick="App.showTeacherLogin('profiles')" style="font-size:.85rem">👩&#x200d;🏫 Lehrer</button>
+      <h2 style="margin:0">👤 Klasse <span id="prof-cls-label"></span></h2>
+      <button class="btn btn-gh btn-sm" onclick="App.showClassSelect()">← Klasse</button>
     </div>
     <p>Wähle dein Profil oder erstelle ein neues!</p>
     <div class="pg" id="pg"></div>
@@ -699,10 +728,21 @@ const App=(()=>{
   }
 
   // PROFILES
-  function showProfiles(){ renderProfiles(); show('s-prof'); }
+  let selectedClass = '';
+
+  function showProfiles(){ show('s-class'); }
+
+  function showClassSelect(){ show('s-class'); }
+
+  function selectClass(cls){
+    selectedClass=cls;
+    $id('prof-cls-label').textContent=cls;
+    renderProfiles();
+    show('s-prof');
+  }
   function renderProfiles(){
     const g=$id('pg'); g.innerHTML='';
-    Store.profiles().forEach(p=>{
+    Store.profiles().filter(p=>p.cls===selectedClass).forEach(p=>{
       const st=Store.totalStars(Store.progress(p.id));
       const d=document.createElement('div'); d.className='pc';
       d.innerHTML=`<div style="font-size:2.2rem">${p.av}</div><div class="pn">${p.name}</div><div class="ps">${p.cls?'📚 '+p.cls+' · ':''} ⭐ ${st}</div>`;
@@ -715,6 +755,9 @@ const App=(()=>{
   let avCatIdx=0;
   function showNF(){
     $id('nn').value=''; $id('nf').style.display='block';
+    // Pre-select current class
+    const clsSel=$id('nn-class');
+    if(clsSel&&selectedClass) clsSel.value=selectedClass;
     renderAvTabs(); renderAvGrid();
   }
   function renderAvTabs(){
@@ -749,7 +792,7 @@ const App=(()=>{
   function hideNF(){ $id('nf').style.display='none'; }
   function createProfile(){
     const name=($id('nn').value||'').trim(); if(!name){alert('Bitte einen Namen eingeben!');return;}
-    const cls=($id('nn-class').value||'').trim();
+    const cls=($id('nn-class').value||selectedClass||'').trim();
     if(!cls){alert('Bitte eine Klasse auswählen!');return;}
     const ps=Store.profiles(), p={id:'p'+Date.now(),name,av:selAv,cls}; ps.push(p); Store.saveProfiles(ps); login(p);
   }
@@ -1780,13 +1823,13 @@ const App=(()=>{
   }
 
   function teacherCancel(){
-    if(teacherPrevScreen==='profiles') showProfiles();
+    if(teacherPrevScreen==='profiles') show('s-class');
     else goMap();
   }
 
   function backToTeacher(){ show('s-teacher'); }
 
-  return {showProfiles,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,pinKey,pinDel,pinCancel};
+  return {showProfiles,showClassSelect,selectClass,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,pinKey,pinDel,pinCancel};
 })();
 
 // Cloud sync on startup
