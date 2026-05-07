@@ -660,6 +660,7 @@ const Store={
   // ── LOCAL (cache) ──
   profiles(){ try{return JSON.parse(localStorage.getItem('tm_profiles')||'[]')}catch(e){return[]} },
   saveProfiles(ps){ localStorage.setItem('tm_profiles',JSON.stringify(ps)); Cloud.saveProfiles(ps); },
+  saveProfile(p){ const ps=Store.profiles().map(x=>x.id===p.id?p:x); if(!ps.find(x=>x.id===p.id)) ps.push(p); localStorage.setItem('tm_profiles',JSON.stringify(ps)); Cloud.saveProfile(p); },
   progress(pid){ try{return JSON.parse(localStorage.getItem('tm_prog_'+pid)||'{}')}catch(e){return{}} },
   saveProgress(pid,p){ localStorage.setItem('tm_prog_'+pid,JSON.stringify(p)); Cloud.saveProgress(pid,p); },
   totalStars(prog){ return Object.values(prog).reduce((s,v)=>s+(v.stars||0),0); },
@@ -674,8 +675,12 @@ const Store={
 };
 
 // ═══════════ CLOUD (Firebase Firestore) ═══════════
+// Jedes Profil hat ein eigenes Dokument → kein Überschreiben bei gleichzeitigem Zugriff
 const Cloud={
-  saveProfiles(ps){ db.collection('config').doc('profiles').set({list:ps}).catch(()=>{}); },
+  // Jedes Profil als eigenes Dokument in 'profiles' Kollektion
+  saveProfile(p){ db.collection('profiles').doc(p.id).set(p).catch(()=>{}); },
+  // saveProfiles wird nur für lokalen Cache benutzt, cloud speichert einzeln
+  saveProfiles(ps){ ps.forEach(p=>Cloud.saveProfile(p)); },
   saveProgress(pid,p){ db.collection('progress').doc(pid).set(p).catch(()=>{}); },
   saveOwned(pid,o){ db.collection('owned').doc(pid).set({items:o}).catch(()=>{}); },
   addSpent(pid,v){ db.collection('spent').doc(pid).set({amount:v}).catch(()=>{}); },
@@ -683,15 +688,27 @@ const Cloud={
   saveTeacherPw(pw){ db.collection('config').doc('teacher').set({pw}).catch(()=>{}); },
   savePinHash(pid,hash){ db.collection('pins').doc(pid).set({hash}).catch(()=>{}); },
   async getPinHash(pid){ try{ const d=await db.collection('pins').doc(pid).get(); return d.exists?d.data().hash:null; }catch(e){return null;} },
+  // Lade alle Profile einer bestimmten Klasse
+  async loadProfilesByClass(cls){
+    try{
+      const snap=await db.collection('profiles').where('cls','==',cls).get();
+      const ps=snap.docs.map(d=>d.data());
+      // Merge mit lokalen Profilen (lokale behalten falls Cloud leer)
+      const local=Store.profiles().filter(p=>p.cls===cls);
+      const cloudIds=new Set(ps.map(p=>p.id));
+      const merged=[...ps, ...local.filter(p=>!cloudIds.has(p.id))];
+      // Update localStorage mit allen Profilen (andere Klassen behalten)
+      const others=Store.profiles().filter(p=>p.cls!==cls);
+      localStorage.setItem('tm_profiles',JSON.stringify([...others,...merged]));
+      return merged;
+    }catch(e){ console.warn('Cloud profile load failed'); return Store.profiles().filter(p=>p.cls===cls); }
+  },
   async loadAll(){
     try{
-      // Load profiles
-      const pd=await db.collection('config').doc('profiles').get();
-      if(pd.exists){ const ps=pd.data().list||[]; localStorage.setItem('tm_profiles',JSON.stringify(ps)); }
       // Load teacher pw
       const td=await db.collection('config').doc('teacher').get();
       if(td.exists&&td.data().pw) localStorage.setItem('tm_teacher_pw',td.data().pw);
-      // Load all progress/stats/owned/spent
+      // Load data for locally known profiles
       const profiles=Store.profiles();
       await Promise.all(profiles.map(async p=>{
         const [prog,ow,sp,st]=await Promise.all([
@@ -734,11 +751,14 @@ const App=(()=>{
 
   function showClassSelect(){ show('s-class'); }
 
-  function selectClass(cls){
+  async function selectClass(cls){
     selectedClass=cls;
     $id('prof-cls-label').textContent=cls;
-    renderProfiles();
     show('s-prof');
+    $id('pg').innerHTML='<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Lade Profile...</p>';
+    // Load profiles from cloud for this class
+    await Cloud.loadProfilesByClass(cls);
+    renderProfiles();
   }
   function renderProfiles(){
     const g=$id('pg'); g.innerHTML='';
@@ -794,7 +814,7 @@ const App=(()=>{
     const name=($id('nn').value||'').trim(); if(!name){alert('Bitte einen Namen eingeben!');return;}
     const cls=($id('nn-class').value||selectedClass||'').trim();
     if(!cls){alert('Bitte eine Klasse auswählen!');return;}
-    const ps=Store.profiles(), p={id:'p'+Date.now(),name,av:selAv,cls}; ps.push(p); Store.saveProfiles(ps); login(p);
+    const p={id:'p'+Date.now(),name,av:selAv,cls}; Store.saveProfile(p); login(p);
   }
   async function login(p){
     // Klasse fehlend → nachträglich eintragen
@@ -802,8 +822,7 @@ const App=(()=>{
       const cls=promptClass(p.name);
       if(!cls) return;
       p.cls=cls;
-      const ps=Store.profiles().map(x=>x.id===p.id?p:x);
-      Store.saveProfiles(ps);
+      Store.saveProfile(p);
     }
     // PIN check
     const storedHash=await Cloud.getPinHash(p.id);
