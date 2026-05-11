@@ -703,6 +703,31 @@ const Cloud={
       return merged;
     }catch(e){ console.warn('Cloud profile load failed'); return Store.profiles().filter(p=>p.cls===cls); }
   },
+  // Load ALL profiles from Firebase (for teacher view)
+  async loadAllProfiles(){
+    try{
+      const snap=await db.collection('profiles').get();
+      const ps=snap.docs.map(d=>d.data());
+      // Merge with local, cloud wins
+      const localOthers=Store.profiles().filter(lp=>!ps.find(cp=>cp.id===lp.id));
+      const merged=[...ps,...localOthers];
+      localStorage.setItem('tm_profiles',JSON.stringify(merged));
+      // Also load all progress/stats/owned/spent for each
+      await Promise.all(ps.map(async p=>{
+        const [prog,ow,sp,st]=await Promise.all([
+          db.collection('progress').doc(p.id).get(),
+          db.collection('owned').doc(p.id).get(),
+          db.collection('spent').doc(p.id).get(),
+          db.collection('stats').doc(p.id).get(),
+        ]);
+        if(prog.exists) localStorage.setItem('tm_prog_'+p.id,JSON.stringify(prog.data()));
+        if(ow.exists) localStorage.setItem('tm_owned_'+p.id,JSON.stringify(ow.data().items||[]));
+        if(sp.exists) localStorage.setItem('tm_spent_'+p.id,String(sp.data().amount||0));
+        if(st.exists) localStorage.setItem('tm_stats_'+p.id,JSON.stringify(st.data()));
+      }));
+      return merged;
+    }catch(e){ console.warn('loadAllProfiles failed:', e); return Store.profiles(); }
+  },
   async loadAll(){
     try{
       // Load teacher pw
@@ -1576,21 +1601,24 @@ const App=(()=>{
     show('s-teacher-login');
   }
 
-  function teacherLogin(){
+  async function teacherLogin(){
     const entered=$id('teacher-pw-input').value;
     if(!entered){ $id('teacher-pw-err').textContent='Bitte ein Passwort eingeben!'; return; }
     const saved=Store.teacherPw();
     if(saved===''){ // Erstes Mal: Passwort setzen
       Store.saveTeacherPw(entered);
-      const cf=document.getElementById('teacher-class-filter')?.value||'';
-      renderTeacher(cf);
-      show('s-teacher');
-    } else if(entered===saved){
-      renderTeacher();
-      show('s-teacher');
-    } else {
+    } else if(entered!==saved){
       $id('teacher-pw-err').textContent='Falsches Passwort!';
+      return;
     }
+    // Zeige Ladeindikator
+    show('s-teacher');
+    $id('teacher-body').innerHTML='<div class="stat-card"><p style="text-align:center;padding:20px">⏳ Lade alle Profile aus der Cloud...</p></div>';
+    // Alle Profile aus Firebase laden
+    await Cloud.loadAllProfiles();
+    // Dann anzeigen
+    const cf=document.getElementById('teacher-class-filter')?.value||'';
+    renderTeacher(cf);
   }
 
   function changePw(){
@@ -1602,8 +1630,11 @@ const App=(()=>{
     alert('Passwort gespeichert! ✅');
   }
 
-  function filterTeacher(){
+  async function filterTeacher(){
     const cls=document.getElementById('teacher-class-filter')?.value||'';
+    $id('teacher-body').innerHTML='<div class="stat-card"><p style="text-align:center;padding:20px">⏳ Lade Profile...</p></div>';
+    if(cls) await Cloud.loadProfilesByClass(cls);
+    else await Cloud.loadAllProfiles();
     renderTeacher(cls);
   }
 
