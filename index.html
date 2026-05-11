@@ -1642,6 +1642,8 @@ const App=(()=>{
     clsFilter=clsFilter||'';
     let profiles=Store.profiles();
     if(clsFilter) profiles=profiles.filter(p=>p.cls===clsFilter);
+    // Alphabetisch nach Name sortieren
+    profiles.sort((a,b)=>a.name.localeCompare(b.name,'de'));
     const body=$id('teacher-body'); body.innerHTML='';
 
     if(profiles.length===0){
