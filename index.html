@@ -703,6 +703,22 @@ const Cloud={
       return merged;
     }catch(e){ console.warn('Cloud profile load failed'); return Store.profiles().filter(p=>p.cls===cls); }
   },
+  // Lade alle Daten eines einzelnen Profils aus Firebase
+  async loadProfileData(pid){
+    try{
+      const [prog,ow,sp,st]=await Promise.all([
+        db.collection('progress').doc(pid).get(),
+        db.collection('owned').doc(pid).get(),
+        db.collection('spent').doc(pid).get(),
+        db.collection('stats').doc(pid).get(),
+      ]);
+      if(prog.exists) localStorage.setItem('tm_prog_'+pid,JSON.stringify(prog.data()));
+      if(ow.exists) localStorage.setItem('tm_owned_'+pid,JSON.stringify(ow.data().items||[]));
+      if(sp.exists) localStorage.setItem('tm_spent_'+pid,String(sp.data().amount||0));
+      if(st.exists) localStorage.setItem('tm_stats_'+pid,JSON.stringify(st.data()));
+      return true;
+    }catch(e){ console.warn('loadProfileData failed:', e); return false; }
+  },
   // Load ALL profiles from Firebase (for teacher view)
   async loadAllProfiles(){
     try{
@@ -868,7 +884,13 @@ const App=(()=>{
         return;
       }
     }
-    profile=p; progress=Store.progress(p.id); showMap();
+    profile=p;
+    // Fortschritt immer aus Firebase laden (schützt vor leerem Safari-Cache)
+    show('s-prof'); // kurz warten screen
+    $id('pg').innerHTML='<p style="text-align:center;padding:20px;color:var(--muted)">⏳ Lade Fortschritt...</p>';
+    await Cloud.loadProfileData(p.id);
+    progress=Store.progress(p.id);
+    showMap();
   }
 
   function simpleHash(pin){
