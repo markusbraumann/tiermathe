@@ -442,7 +442,7 @@ hr.dv{border:none;border-top:2px solid #f0f0f0;margin:18px 0}
     </div>
     <div class="exprog" id="exprog"></div>
     <div class="pw"><div class="pf" id="expf" style="width:0%"></div></div>
-    <div class="exeq"><span id="exa"></span><span>×</span><span id="exb"></span><span>=</span><input class="exans" id="exans" type="text" inputmode="none" readonly placeholder="?" maxlength="3"></div>
+    <div class="exeq"><span id="exa"></span><span id="ex-eq-op">×</span><span id="exb"></span><span>=</span><input class="exans" id="exans" type="text" inputmode="none" readonly placeholder="?" maxlength="3"></div>
     <div class="exfb" id="exfb"></div>
     <div class="np">
       <button class="nb" onclick="App.ekp('1')">1</button><button class="nb" onclick="App.ekp('2')">2</button>
@@ -1070,6 +1070,101 @@ const App=(()=>{
     fstart.onclick=startFreeExam;
     fblk.appendChild(fstart);
     body.appendChild(fblk);
+
+    // DIVISION BLOCK
+    const dblk=document.createElement('div'); dblk.className='cb';
+    dblk.innerHTML='<div class="ct">➗ Division – Wähle deine Aufgabenreihen</div>';
+    const ddesc=document.createElement('p');
+    ddesc.style.cssText='font-size:.88rem;color:var(--muted);font-weight:700;margin-bottom:14px';
+    ddesc.textContent='Wähle eine oder mehrere Einmaleins-Reihen – du bekommst 20 zufällige Divisionsaufgaben daraus.';
+    dblk.appendChild(ddesc);
+    const drows=document.createElement('div');
+    drows.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px';
+    [1,2,3,4,5,6,7,8,9,10].forEach(i=>{
+      const b=document.createElement('button');
+      b.className='cls-btn'; b.id='divrow-'+i; b.dataset.row=i;
+      b.style.cssText='font-size:1.1rem;padding:10px 6px';
+      b.textContent=i+'er';
+      b.dataset.selected='false';
+      b.onclick=function(){
+        const sel=this.dataset.selected==='true';
+        this.dataset.selected=(!sel).toString();
+        this.style.background=!sel?'var(--orange)':'#f7f7f7';
+        this.style.color=!sel?'#fff':'var(--text)';
+        this.style.borderColor=!sel?'var(--orange)':'#e0e0e0';
+      };
+      drows.appendChild(b);
+    });
+    dblk.appendChild(drows);
+    const dstart=document.createElement('button');
+    dstart.className='btn btn-t'; dstart.textContent='➗ Divisions-Übung starten';
+    dstart.onclick=startDivExam; dblk.appendChild(dstart);
+    body.appendChild(dblk);
+  }
+
+  // ═══════════ DIVISION ═══════════
+  function startDivExam(){
+    const selected=[];
+    [1,2,3,4,5,6,7,8,9,10].forEach(i=>{
+      const btn=document.getElementById('divrow-'+i);
+      if(btn&&btn.dataset.selected==='true') selected.push(i);
+    });
+    if(selected.length===0){ alert('Bitte mindestens eine Reihe auswählen!'); return; }
+    // Build pool: a÷b where a=i*j (1-10), result=i, b=j
+    let pool=[];
+    selected.forEach(divisor=>{
+      for(let result=1;result<=10;result++){
+        pool.push([divisor*result, divisor, result]); // [dividend, divisor, result]
+      }
+    });
+    // Pick 20 random
+    const shuffled=[...pool].sort(()=>Math.random()-.5);
+    let tasks=[];
+    while(tasks.length<20) tasks=[...tasks,...shuffled];
+    tasks=tasks.slice(0,20);
+    const rowNames=selected.map(i=>i+'er').join(', ');
+    stopTimer();
+    divSess={tasks, qi:0, correct:0, wrong:0, timePerTask:0, rowNames};
+    showDivOptions(rowNames);
+  }
+
+  let divSess={};
+
+  function showDivOptions(rowNames){
+    let overlay=document.getElementById('catexam-overlay');
+    if(!overlay){ overlay=document.createElement('div'); overlay.id='catexam-overlay';
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;';
+      document.body.appendChild(overlay); }
+    overlay.style.display='flex';
+    overlay.innerHTML='<div style="background:#fff;border-radius:24px;padding:36px 32px;max-width:400px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.2)">'
+      +'<div style="font-size:3rem;margin-bottom:8px">➗</div>'
+      +'<div style="font-family:Fredoka One,cursive;font-size:1.4rem;margin-bottom:8px">Divisions-Übung</div>'
+      +'<p style="color:var(--muted);margin-bottom:8px">'+rowNames+'</p>'
+      +'<p style="color:var(--muted);margin-bottom:20px">20 Aufgaben – mit oder ohne Zeitdruck?</p>'
+      +'<div style="display:flex;flex-direction:column;gap:10px">'
+      +'<button class="btn btn-g" style="font-size:1rem" onclick="App.launchDivExam(0)">🐢 Kein Zeitdruck</button>'
+      +'<button class="btn btn-o" style="font-size:1rem" onclick="App.launchDivExam(10)">⏱ 10 Sekunden pro Aufgabe</button>'
+      +'<button class="btn" style="background:linear-gradient(135deg,#e57373,#c0392b);color:#fff;font-size:1rem" onclick="App.launchDivExam(6)">🚀 6 Sekunden pro Aufgabe</button>'
+      +'<button class="btn btn-gh btn-sm" style="margin-top:4px" onclick="document.getElementById(\'catexam-overlay\').style.display=\'none\'">Abbrechen</button>'
+      +'</div></div>';
+  }
+
+  function launchDivExam(timePerTask){
+    const overlay=document.getElementById('catexam-overlay');
+    if(overlay) overlay.style.display='none';
+    divSess.timePerTask=timePerTask;
+    // Use exam screen but in division mode
+    examSess={
+      ex:{id:'div',label:'Divisions-Übung',badge:'➗',timePerTask},
+      cat:null, isCatExam:false, isFreeExam:false, isDivExam:true,
+      tasks:divSess.tasks.map(([a,b,r])=>[a,b]), // store [dividend, divisor]
+      divResults:divSess.tasks.map(([a,b,r])=>r), // correct results
+      qi:0, correct:0, wrong:0, timePerTask, catNames:divSess.rowNames
+    };
+    $id('extitle').textContent='➗ Division – '+divSess.rowNames;
+    // Switch equation display to ÷
+    $id('ex-eq-op').textContent='÷';
+    show('s-exam'); showExTask();
   }
 
   // FREE CUSTOM EXAM
@@ -1352,6 +1447,7 @@ const App=(()=>{
     const tasks=shuffle(allTasks()).slice(0,EXAM_COUNT);
     examSess={ex,cat:null,isCatExam:false,tasks,qi:0,correct:0,wrong:0,timePerTask:ex.timePerTask};
     $id('extitle').textContent=ex.badge+' '+ex.label;
+    const opEl2=$id('ex-eq-op'); if(opEl2) opEl2.textContent='×';
     show('s-exam'); showExTask();
   }
 
@@ -1360,6 +1456,9 @@ const App=(()=>{
     if(qi>=tasks.length){finishExam();return;}
     const [a,b]=tasks[qi];
     $id('exa').textContent=a; $id('exb').textContent=b;
+    // Set operator (× or ÷)
+    const opEl=$id('ex-eq-op');
+    if(opEl) opEl.textContent=examSess.isDivExam?'÷':'×';
     $id('exans').value=''; $id('exans').className='exans';
     $id('exfb').textContent=''; $id('exfb').className='exfb';
     const total=examSess.tasks.length;
@@ -1368,7 +1467,9 @@ const App=(()=>{
     const tpt=examSess.timePerTask||0;
     if(tpt>0) startTimer(tpt,()=>{
       examSess.wrong++; $id('exans').className='exans er';
-      $id('exfb').textContent=`Zeit! ${a}×${b}=${a*b} ⏱`; $id('exfb').className='exfb er';
+      const tcor=examSess.isDivExam?examSess.divResults[examSess.qi]:a*b;
+      const top=examSess.isDivExam?'÷':'×';
+      $id('exfb').textContent='Zeit! '+a+top+b+'='+tcor+' ⏱'; $id('exfb').className='exfb er';
       Sound.playErr(); examSess.qi++;
       setTimeout(()=>showExTask(),1000);
     }); else hideTimer();
@@ -1397,7 +1498,8 @@ const App=(()=>{
   function esubmit(){
     if(examLocked) return;
     const v=parseInt($id('exans').value); if(isNaN(v)||$id('exans').value===''){$id('exfb').textContent='Gib eine Zahl ein!';$id('exfb').className='exfb er';return;}
-    const [a,b]=examSess.tasks[examSess.qi], cor=a*b;
+    const [a,b]=examSess.tasks[examSess.qi];
+    const cor=examSess.isDivExam ? examSess.divResults[examSess.qi] : a*b;
     if(v===cor){
       stopTimer(); $id('exans').className='exans ok';
       $id('exfb').textContent=['Super! 🎉','Richtig! ⭐','Toll! 🌟','Ja! ✨'][Math.floor(Math.random()*4)]; $id('exfb').className='exfb ok';
@@ -1903,7 +2005,7 @@ const App=(()=>{
 
   function backToTeacher(){ show('s-teacher'); }
 
-  return {showProfiles,showClassSelect,selectClass,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,pinKey,pinDel,pinCancel};
+  return {showProfiles,showClassSelect,selectClass,createProfile,hideNF,goMap,replay,replayExam,introNext,speakBubble,kp,kd,submit,ekp,ekd,esubmit,toggleSound,showShop,showTrophy,buyItem,launchCatExam,showStats,showTeacherLogin,teacherLogin,changePw,teacherCancel,backToTeacher,filterTeacher,resetPupil,deletePupil,resetLevel,resetCatExam,launchFreeExam,launchDivExam,pinKey,pinDel,pinCancel};
 })();
 
 // Cloud sync on startup
